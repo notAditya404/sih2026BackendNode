@@ -3,6 +3,12 @@ const SelfAssessment = require("../models/SelfAssessment");
 const LeaveRequest = require("../models/LeaveRequest");
 const AdminPersonnel = require("../models/AdminPersonnel");
 const Personnel = require("../models/Personnel");
+// Not used directly here, but AdminPersonnel.populate("admin") below needs
+// the Admin schema registered with mongoose first. The full Express app
+// happens to load it via some other require chain (e.g. adminAuth.controller.js)
+// before any request runs, but standalone scripts (recomputeMlPredictions.js)
+// don't go through that chain - so it has to be required explicitly here.
+require("../models/Admin");
 const { startOfUTCDay, addDays } = require("./dateFormat");
 const ApiError = require("../utils/ApiError");
 
