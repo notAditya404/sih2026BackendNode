@@ -1,6 +1,7 @@
 const StressPrediction = require("../models/StressPrediction");
 const HrIndicator = require("../models/HrIndicator");
 const SelfAssessment = require("../models/SelfAssessment");
+const LeaveRequest = require("../models/LeaveRequest");
 const Personnel = require("../models/Personnel");
 const { startOfUTCDay, addDays, toDisplayDate } = require("./dateFormat");
 
@@ -95,7 +96,7 @@ async function gatherRawMetrics(personnelId, asOf) {
   const dutyWindowStart = addDays(asOf, -DUTY_WINDOW_DAYS);
   const checkinWindowStart = addDays(asOf, -CHECKIN_WINDOW_DAYS);
 
-  const [duties, checkins, signupSurvey, personnel] = await Promise.all([
+  const [duties, checkins, signupSurvey, personnel, recentLeave] = await Promise.all([
     HrIndicator.find({ personnel: personnelId, date: { $gte: dutyWindowStart, $lte: asOf } }).sort({ date: 1 }),
     SelfAssessment.find({
       personnel: personnelId,
@@ -104,9 +105,12 @@ async function gatherRawMetrics(personnelId, asOf) {
     }).sort({ createdAt: 1 }),
     SelfAssessment.findOne({ personnel: personnelId, source: "signup" }),
     Personnel.findById(personnelId),
+    // Real leave history now exists (leave_requests) - preferred over the
+    // signup survey's one-time, never-updated self-report below.
+    LeaveRequest.findOne({ personnel: personnelId, status: "Approved", toDate: { $lte: asOf } }).sort({ toDate: -1 }),
   ]);
 
-  return { duties, checkins, signupSurvey, personnel, asOf };
+  return { duties, checkins, signupSurvey, personnel, recentLeave, asOf };
 }
 
 function computeDutyMetrics(duties) {
@@ -125,16 +129,26 @@ function computeDutyMetrics(duties) {
 
   return {
     avgHoursPerDutyDay: totalHours / hoursByDay.size,
-    // No explicit day/night flag exists on a duty entry (the admin's assign-duty
-    // form only collects date/hours/remark) - a >=10hr shift is used as a proxy
-    // for one that runs into the night, pending a real duty-type field.
-    nightDutyCount: duties.filter((d) => d.hours >= 10).length,
+    // shiftType is a real field the admin picks when assigning duty (day/night)
+    // - counts actual night shifts, not a >=10hr-shift proxy.
+    nightDutyCount: duties.filter((d) => d.shiftType === "night").length,
     consecutiveDutyDays: currentDutyStreak(sortedDates),
     distinctDayCount: hoursByDay.size,
   };
 }
 
-function computeCheckinMetrics(checkins, signupSurvey) {
+// Buckets a real approved leave's end date into the same tiers the signup
+// survey's self-reported "lastLeave" answer uses, from actual elapsed days
+// rather than a string frozen at signup.
+function leaveRecencyFromDate(toDate, asOf) {
+  const daysSince = Math.floor((asOf - toDate) / 86400000);
+  if (daysSince <= 30) return "This month";
+  if (daysSince <= 90) return "1-3 months ago";
+  if (daysSince <= 180) return "3-6 months ago";
+  return "6+ months ago";
+}
+
+function computeCheckinMetrics(checkins, signupSurvey, recentLeave, asOf) {
   const sleepSamples = checkins.map((c) => sleepHoursToScore(c.sleepHours)).filter((v) => v !== undefined);
   const mealsSamples = checkins.map((c) => mealsPerDayToScore(c.mealsPerDay)).filter((v) => v !== undefined);
 
@@ -144,12 +158,20 @@ function computeCheckinMetrics(checkins, signupSurvey) {
   // falls back to the signup survey's workPressure answer.
   const pressureScore = signupSurvey ? PRESSURE_SCORE[signupSurvey.workPressure] ?? 60 : 60;
 
+  // Real leave history (leave_requests) wins once they've had one approved
+  // leave in the system - the signup survey's answer is a one-time
+  // self-report that's never updated afterward, so it's only a fallback
+  // for personnel who haven't taken any leave since signing up.
+  const lastLeaveAnswer = recentLeave
+    ? leaveRecencyFromDate(recentLeave.toDate, asOf)
+    : signupSurvey?.lastLeave ?? null;
+
   return {
     sleepScore: average(sleepSamples, fallbackSleep ?? 70),
     mealsScore: average(mealsSamples, fallbackMeals ?? 65),
     pressureScore,
-    leaveRecencyScore: signupSurvey ? LEAVE_RECENCY_SCORE[signupSurvey.lastLeave] ?? 60 : 60,
-    lastLeaveAnswer: signupSurvey ? signupSurvey.lastLeave : null,
+    leaveRecencyScore: lastLeaveAnswer ? LEAVE_RECENCY_SCORE[lastLeaveAnswer] ?? 60 : 60,
+    lastLeaveAnswer,
     hasCheckins: checkins.length > 0,
   };
 }
@@ -309,10 +331,10 @@ async function computeTrendDirection(personnelId, asOf, wellnessScore) {
 
 /** Computes (but does not persist) a full snapshot for one personnel as of `asOf` (defaults to today, UTC midnight). */
 async function computeSnapshot(personnelId, asOf = startOfUTCDay()) {
-  const { duties, checkins, signupSurvey, personnel } = await gatherRawMetrics(personnelId, asOf);
+  const { duties, checkins, signupSurvey, personnel, recentLeave } = await gatherRawMetrics(personnelId, asOf);
 
   const duty = computeDutyMetrics(duties);
-  const checkin = computeCheckinMetrics(checkins, signupSurvey);
+  const checkin = computeCheckinMetrics(checkins, signupSurvey, recentLeave, asOf);
   const { pillars, wellnessScore, nightDutyScore, consecutiveScore } = computePillars(duty, checkin);
 
   const riskScore = 100 - wellnessScore;
