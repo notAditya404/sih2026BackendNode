@@ -15,17 +15,24 @@ const getMe = asyncHandler(async (req, res) => {
   });
 });
 
-async function getLatestAssignedDuty(personnelId) {
-  const latest = await HrIndicator.findOne({ personnel: personnelId }).sort({ assignedAt: -1 });
-  if (!latest) return null;
+// The soonest duty that's today or still upcoming - not just whatever was
+// logged most recently (which, once a personnel has any duty history,
+// would keep surfacing an already-completed past duty on the home screen
+// forever instead of what they actually need to know about next).
+async function getUpcomingAssignedDuty(personnelId) {
+  const upcoming = await HrIndicator.findOne({
+    personnel: personnelId,
+    date: { $gte: startOfUTCDay() },
+  }).sort({ date: 1 });
+  if (!upcoming) return null;
 
-  return { date: toDisplayDate(latest.date), hours: latest.hours, remark: latest.remark };
+  return { date: toDisplayDate(upcoming.date), hours: upcoming.hours, remark: upcoming.remark };
 }
 
 const getHomeDashboard = asyncHandler(async (req, res) => {
   const snapshot = await getOrComputeTodaySnapshot(req.personnel._id);
   const effective = await getEffectiveScore(req.personnel._id);
-  const assignedDuty = await getLatestAssignedDuty(req.personnel._id);
+  const assignedDuty = await getUpcomingAssignedDuty(req.personnel._id);
 
   res.json({
     personnel: { fullName: req.personnel.fullName },
