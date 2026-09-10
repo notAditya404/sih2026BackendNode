@@ -76,9 +76,18 @@ function describeWellness(wellnessLabel) {
   return WELLNESS_DESCRIPTIONS[wellnessLabel];
 }
 
-/** Longest run of consecutive calendar days (ending today or earlier) that have at least one duty entry. */
-function currentDutyStreak(sortedDistinctDates) {
+/**
+ * Length of the run of consecutive calendar days, ending at `asOf` or the day
+ * before it, that have at least one duty entry. Returns 0 if the most recent
+ * duty date is more than a day old - a run that ended days ago (e.g. the
+ * personnel has since gone on leave) isn't a "current" streak.
+ */
+function currentDutyStreak(sortedDistinctDates, asOf) {
   if (!sortedDistinctDates.length) return 0;
+
+  const lastDate = sortedDistinctDates[sortedDistinctDates.length - 1];
+  const daysSinceLast = (asOf - lastDate) / 86400000;
+  if (daysSinceLast > 1) return 0;
 
   let streak = 1;
   for (let i = sortedDistinctDates.length - 1; i > 0; i -= 1) {
@@ -113,7 +122,7 @@ async function gatherRawMetrics(personnelId, asOf) {
   return { duties, checkins, signupSurvey, personnel, recentLeave, asOf };
 }
 
-function computeDutyMetrics(duties) {
+function computeDutyMetrics(duties, asOf) {
   if (!duties.length) {
     return { avgHoursPerDutyDay: null, nightDutyCount: 0, consecutiveDutyDays: 0, distinctDayCount: 0 };
   }
@@ -132,7 +141,7 @@ function computeDutyMetrics(duties) {
     // shiftType is a real field the admin picks when assigning duty (day/night)
     // - counts actual night shifts, not a >=10hr-shift proxy.
     nightDutyCount: duties.filter((d) => d.shiftType === "night").length,
-    consecutiveDutyDays: currentDutyStreak(sortedDates),
+    consecutiveDutyDays: currentDutyStreak(sortedDates, asOf),
     distinctDayCount: hoursByDay.size,
   };
 }
@@ -333,7 +342,7 @@ async function computeTrendDirection(personnelId, asOf, wellnessScore) {
 async function computeSnapshot(personnelId, asOf = startOfUTCDay()) {
   const { duties, checkins, signupSurvey, personnel, recentLeave } = await gatherRawMetrics(personnelId, asOf);
 
-  const duty = computeDutyMetrics(duties);
+  const duty = computeDutyMetrics(duties, asOf);
   const checkin = computeCheckinMetrics(checkins, signupSurvey, recentLeave, asOf);
   const { pillars, wellnessScore, nightDutyScore, consecutiveScore } = computePillars(duty, checkin);
 

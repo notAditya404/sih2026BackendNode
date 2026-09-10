@@ -9,7 +9,7 @@ const Personnel = require("../models/Personnel");
 // before any request runs, but standalone scripts (recomputeMlPredictions.js)
 // don't go through that chain - so it has to be required explicitly here.
 require("../models/Admin");
-const { startOfUTCDay, addDays } = require("./dateFormat");
+const { startOfUTCDay, addDays, istParts } = require("./dateFormat");
 const ApiError = require("../utils/ApiError");
 
 const RECORD_WINDOW_DAYS = 15;
@@ -49,11 +49,11 @@ function ageFromDob(dob) {
   const birthDate = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
   if (Number.isNaN(birthDate.getTime())) return DEFAULT_AGE;
 
-  const today = new Date();
-  let age = today.getUTCFullYear() - birthDate.getUTCFullYear();
+  const today = istParts(new Date());
+  let age = today.year - birthDate.getUTCFullYear();
   const hadBirthdayThisYear =
-    today.getUTCMonth() > birthDate.getUTCMonth() ||
-    (today.getUTCMonth() === birthDate.getUTCMonth() && today.getUTCDate() >= birthDate.getUTCDate());
+    today.month > birthDate.getUTCMonth() ||
+    (today.month === birthDate.getUTCMonth() && today.day >= birthDate.getUTCDate());
   if (!hadBirthdayThisYear) age -= 1;
 
   return age > 0 ? age : DEFAULT_AGE;

@@ -129,4 +129,5 @@ module.exports = {
   startOfUTCDay,
   addDays,
   toRelativeTime,
+  istParts,
 };

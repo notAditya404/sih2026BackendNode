@@ -62,7 +62,12 @@ async function buildThirtyDayTrend(personnelId, todaySnapshot) {
   const snapshots = await StressPrediction.find({ personnel: personnelId, snapshotDate: { $in: days } });
   const byDate = new Map(snapshots.map((s) => [s.snapshotDate.getTime(), s.wellnessScore]));
 
-  let lastKnown = todaySnapshot.wellnessScore;
+  // Points before the first stored snapshot fall back to that first known
+  // value, not today's score - carrying today's number backward through
+  // history that hasn't happened yet would flatten out real long-term
+  // improvement or decline into a misleadingly flat line (matches
+  // adminInsights.js's getWellnessSummary, which seeds the same way).
+  let lastKnown = days.map((d) => byDate.get(d.getTime())).find((v) => v !== undefined) ?? todaySnapshot.wellnessScore;
   const points = days.map((d, i) => {
     if (i === days.length - 1) return todaySnapshot.wellnessScore;
     const value = byDate.get(d.getTime());

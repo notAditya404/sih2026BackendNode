@@ -46,6 +46,9 @@ const decideLeaveRequest = asyncHandler(async (req, res) => {
   if (!request || !personnelIds.includes(String(request.personnel))) {
     throw new ApiError(404, "Leave request not found");
   }
+  if (request.status !== "Pending") {
+    throw new ApiError(409, "This leave request has already been decided");
+  }
 
   request.status = status;
   request.decidedBy = req.admin._id;
