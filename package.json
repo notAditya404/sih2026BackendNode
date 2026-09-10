@@ -10,6 +10,7 @@
     "seed": "node src/scripts/seed.js",
     "seed-demo-data": "node src/scripts/seedDemoData.js",
     "recompute-snapshots": "node src/scripts/recomputeDailySnapshots.js",
+    "backfill-snapshots": "node src/scripts/backfillSnapshots.js",
     "recompute-ml-predictions": "node src/scripts/recomputeMlPredictions.js"
   },
   "dependencies": {
