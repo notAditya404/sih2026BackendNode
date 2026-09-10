@@ -7,12 +7,10 @@ const { startOfUTCDay, addDays, toDisplayDate } = require("./dateFormat");
 const DUTY_WINDOW_DAYS = 14;
 const CHECKIN_WINDOW_DAYS = 14;
 
-const SLEEP_SCORE = { "< 5 hrs": 30, "5-6 hrs": 55, "6-7 hrs": 75, "7-8 hrs": 90, "8+ hrs": 95 };
-// workPressure (signup) and stressLevel (daily check-in) share the exact
-// same four-option vocabulary in both apps, so one map covers both.
+// workPressure is only ever collected at signup now (daily check-in dropped
+// mood/stressLevel in favor of raw sleep_hours + meals_per_day, which feed
+// the ML model directly - see mlRecordBuilder.js).
 const PRESSURE_SCORE = { Low: 90, Moderate: 65, High: 35, "Very High": 15 };
-const DIET_SCORE = { Poor: 30, Average: 60, Good: 80, Excellent: 95 };
-const MOOD_SCORE = { low: 25, okay: 55, good: 80, great: 98 };
 const LEAVE_RECENCY_SCORE = {
   "This month": 90,
   "1-3 months ago": 70,
@@ -23,6 +21,26 @@ const LEAVE_RECENCY_SCORE = {
 function average(numbers, fallback) {
   if (!numbers.length) return fallback;
   return numbers.reduce((sum, n) => sum + n, 0) / numbers.length;
+}
+
+// sleepHours and mealsPerDay are raw numbers now (not bucketed strings) -
+// bucketed into a 0-100 score here for the old heuristic engine's pillars,
+// same thresholds as before, just computed from the number directly.
+function sleepHoursToScore(hours) {
+  if (typeof hours !== "number") return undefined;
+  if (hours < 5) return 30;
+  if (hours < 6) return 55;
+  if (hours < 7) return 75;
+  if (hours < 8) return 90;
+  return 95;
+}
+
+function mealsPerDayToScore(meals) {
+  if (typeof meals !== "number") return undefined;
+  if (meals <= 0) return 20;
+  if (meals === 1) return 45;
+  if (meals === 2) return 70;
+  return 95;
 }
 
 function bucketStatus(score) {
@@ -105,18 +123,19 @@ function computeDutyMetrics(duties) {
 }
 
 function computeCheckinMetrics(checkins, signupSurvey) {
-  const sleepSamples = checkins.map((c) => SLEEP_SCORE[c.sleepHours]).filter((v) => v !== undefined);
-  const moodSamples = checkins.map((c) => MOOD_SCORE[c.mood]).filter((v) => v !== undefined);
-  const stressSamples = checkins.map((c) => PRESSURE_SCORE[c.stressLevel]).filter((v) => v !== undefined);
+  const sleepSamples = checkins.map((c) => sleepHoursToScore(c.sleepHours)).filter((v) => v !== undefined);
+  const mealsSamples = checkins.map((c) => mealsPerDayToScore(c.mealsPerDay)).filter((v) => v !== undefined);
 
-  const fallbackSleep = signupSurvey ? SLEEP_SCORE[signupSurvey.sleepHours] : undefined;
-  const fallbackPressure = signupSurvey ? PRESSURE_SCORE[signupSurvey.workPressure] : undefined;
+  const fallbackSleep = signupSurvey ? sleepHoursToScore(signupSurvey.sleepHours) : undefined;
+  const fallbackMeals = signupSurvey ? mealsPerDayToScore(signupSurvey.mealsPerDay) : undefined;
+  // Daily check-in no longer asks a stress question directly - this always
+  // falls back to the signup survey's workPressure answer.
+  const pressureScore = signupSurvey ? PRESSURE_SCORE[signupSurvey.workPressure] ?? 60 : 60;
 
   return {
     sleepScore: average(sleepSamples, fallbackSleep ?? 70),
-    moodScore: average(moodSamples, 70),
-    pressureScore: average(stressSamples, fallbackPressure ?? 60),
-    dietScore: signupSurvey ? DIET_SCORE[signupSurvey.dietQuality] ?? 65 : 65,
+    mealsScore: average(mealsSamples, fallbackMeals ?? 65),
+    pressureScore,
     leaveRecencyScore: signupSurvey ? LEAVE_RECENCY_SCORE[signupSurvey.lastLeave] ?? 60 : 60,
     lastLeaveAnswer: signupSurvey ? signupSurvey.lastLeave : null,
     hasCheckins: checkins.length > 0,
@@ -143,7 +162,7 @@ function computePillars(duty, checkin) {
     restRecovery: Math.round(checkin.sleepScore * 0.7 + dutyLoadScore * 0.3),
     nightDutyImpact: Math.round(nightDutyScore),
     deploymentLoad: Math.round(dutyLoadScore * 0.5 + consecutiveScore * 0.5),
-    recoveryConsistency: Math.round(checkin.leaveRecencyScore * 0.5 + checkin.sleepScore * 0.3 + checkin.moodScore * 0.2),
+    recoveryConsistency: Math.round(checkin.leaveRecencyScore * 0.5 + checkin.sleepScore * 0.3 + checkin.mealsScore * 0.2),
   };
 
   const pillars = [

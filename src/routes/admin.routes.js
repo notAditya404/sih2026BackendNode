@@ -5,6 +5,7 @@ const { wellnessSummary, aiInsights } = require("../controllers/adminInsights.co
 const { listDuty, assignDuty } = require("../controllers/adminDuty.controller");
 const { listLeaveRequests, decideLeaveRequest } = require("../controllers/adminLeave.controller");
 const { listSupportRequests, allocateSupportRequest, listDoctors } = require("../controllers/adminSupport.controller");
+const { recomputeAll } = require("../controllers/mlPredictions.controller");
 
 // Mounted at /admin.
 const router = express.Router();
@@ -23,5 +24,9 @@ router.get("/support-requests", listSupportRequests);
 router.patch("/support-requests/:id", allocateSupportRequest);
 
 router.get("/doctors", listDoctors);
+
+// System-wide ML batch job - see mlPredictions.controller.js. Processes
+// every personnel, not just this admin's linked list.
+router.post("/ml-predictions/recompute", recomputeAll);
 
 module.exports = router;

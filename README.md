@@ -36,6 +36,35 @@ for every personnel up front - intended to run once a day via an external
 scheduler so `GET /admin/wellness-summary`'s 7-day trend always has a real
 history, not just today's point.
 
+## The real ML model pipeline
+
+Separate from the heuristic engine above, there's now a path to the actual
+trained model (a regressor + classifier, driven the same way as its own
+`predict_cli.py`):
+
+1. `src/services/mlOptions.js` - the two new enums the model needs:
+   `terrainType` (set once per admin at admin signup - every personnel
+   linked to that admin shares their unit's terrain) and `shiftType` (set
+   per duty entry when an admin assigns duty).
+2. `src/services/mlRecordBuilder.js` - for one personnel, builds the exact
+   record shape `predict_cli.py` sends to `predict_risk()`: 15-day average
+   sleep hours and shift duration, 15-day mode shift type, the personnel's
+   unit terrain, leave rejections in the last 90 days, age (from their
+   signup `dob`), and their most recent meals-per-day answer.
+3. `src/services/mlClient.js` - POSTs that record to `ML_MODEL_URL` and
+   expects back `{ ml_predicted_risk_score, ml_predicted_stress_level,
+   deterministic_risk_score, deterministic_stress_level }` - the same shape
+   `predict_risk()` already returns, so wrapping it in a small HTTP service
+   (Flask/FastAPI, whatever) needs no translation on either side.
+4. `POST /admin/ml-predictions/recompute` - runs this for every personnel in
+   the system and stores the result in `MlPrediction` (one row per
+   personnel per day). Each personnel is tried independently and reported,
+   so one failure doesn't stop the rest.
+
+**Not connected yet** - `ML_MODEL_URL` is unset until the model's repo is
+deployed somewhere reachable from this backend. Until then, the recompute
+endpoint returns a clear per-personnel 503 instead of faking a score.
+
 ## Folder structure
 
 ```

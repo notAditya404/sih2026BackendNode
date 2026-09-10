@@ -35,7 +35,7 @@ const login = asyncHandler(async (req, res) => {
 const signup = asyncHandler(async (req, res) => {
   const {
     fullName, email, rank, dob, gender, bloodGroup,
-    sleepHours, dietQuality, workPressure, lastLeave, password,
+    sleepHours, mealsPerDay, workPressure, lastLeave, password,
   } = req.body;
 
   if (!fullName || !email || !rank || !password) {
@@ -57,7 +57,7 @@ const signup = asyncHandler(async (req, res) => {
   await SelfAssessment.create({
     personnel: personnel._id,
     source: "signup",
-    sleepHours, dietQuality, workPressure, lastLeave,
+    sleepHours, mealsPerDay, workPressure, lastLeave,
   });
 
   const token = signToken({ id: personnel._id, role: "personnel" });

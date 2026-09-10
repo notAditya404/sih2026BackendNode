@@ -17,17 +17,16 @@ const getTodayStatus = asyncHandler(async (req, res) => {
 });
 
 const submitCheckIn = asyncHandler(async (req, res) => {
-  const { mood, sleepHours, stressLevel } = req.body;
-  if (!mood || !sleepHours || !stressLevel) {
-    throw new ApiError(400, "mood, sleepHours and stressLevel are required");
+  const { sleepHours, mealsPerDay } = req.body;
+  if (typeof sleepHours !== "number" || typeof mealsPerDay !== "number") {
+    throw new ApiError(400, "sleepHours and mealsPerDay (numbers) are required");
   }
 
   await SelfAssessment.create({
     personnel: req.personnel._id,
     source: "daily-checkin",
-    mood,
     sleepHours,
-    stressLevel,
+    mealsPerDay,
   });
 
   res.status(201).json({ success: true });

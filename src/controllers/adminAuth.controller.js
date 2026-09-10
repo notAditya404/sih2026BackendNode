@@ -1,11 +1,12 @@
 const bcrypt = require("bcryptjs");
 const Admin = require("../models/Admin");
 const { signToken } = require("../utils/jwt");
+const { TERRAIN_TYPE_OPTIONS } = require("../services/mlOptions");
 const ApiError = require("../utils/ApiError");
 const asyncHandler = require("../utils/asyncHandler");
 
 function adminSummary(admin) {
-  return { fullName: admin.fullName, role: admin.role };
+  return { fullName: admin.fullName, role: admin.role, terrainType: admin.terrainType };
 }
 
 const login = asyncHandler(async (req, res) => {
@@ -29,9 +30,12 @@ const login = asyncHandler(async (req, res) => {
 });
 
 const signup = asyncHandler(async (req, res) => {
-  const { fullName, email, password } = req.body;
-  if (!fullName || !email || !password) {
-    throw new ApiError(400, "fullName, email and password are required");
+  const { fullName, email, password, terrainType } = req.body;
+  if (!fullName || !email || !password || !terrainType) {
+    throw new ApiError(400, "fullName, email, password and terrainType are required");
+  }
+  if (!TERRAIN_TYPE_OPTIONS.includes(terrainType)) {
+    throw new ApiError(400, `terrainType must be one of: ${TERRAIN_TYPE_OPTIONS.join(", ")}`);
   }
 
   const existing = await Admin.findOne({ email: email.toLowerCase().trim() });
@@ -40,7 +44,7 @@ const signup = asyncHandler(async (req, res) => {
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
-  const admin = await Admin.create({ fullName, email: email.toLowerCase().trim(), passwordHash });
+  const admin = await Admin.create({ fullName, email: email.toLowerCase().trim(), passwordHash, terrainType });
 
   const token = signToken({ id: admin._id, role: "admin" });
   res.status(201).json({ token, admin: adminSummary(admin) });
