@@ -17,6 +17,7 @@ require("dotenv").config();
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const connectDB = require("../config/db");
+const { startOfUTCDay, addDays } = require("../services/dateFormat");
 
 const Admin = require("../models/Admin");
 const Personnel = require("../models/Personnel");
@@ -55,13 +56,13 @@ function pick(arr) {
   return arr[randomInt(0, arr.length - 1)];
 }
 function daysAgo(n) {
-  const d = new Date();
-  d.setUTCHours(0, 0, 0, 0);
-  d.setUTCDate(d.getUTCDate() - n);
-  return d;
+  return addDays(startOfUTCDay(), -n);
+}
+function daysAhead(n) {
+  return addDays(startOfUTCDay(), n);
 }
 function dobForAge(age) {
-  const year = new Date().getUTCFullYear() - age;
+  const year = startOfUTCDay().getUTCFullYear() - age;
   const month = String(randomInt(1, 12)).padStart(2, "0");
   const day = String(randomInt(1, 28)).padStart(2, "0");
   return `${day}/${month}/${year}`;
@@ -183,19 +184,20 @@ async function run() {
   await SelfAssessment.collection.insertMany(checkinDocs);
   console.log(`Inserted ${dutyDocs.length} duty entries and ${checkinDocs.length} daily check-ins.`);
 
-  // --- Leave requests: persona.rejections Rejected + a couple Approved + one Pending, spread across the window ---
+  // --- Leave requests: persona.rejections Rejected + one Approved from the past,
+  // plus one genuinely upcoming Pending request so it's actually testable (an
+  // already-past Pending would just get auto-derived as "Expired" on read) ---
   const leaveDocs = [];
   let sequenceToday = 1;
   for (const { personnel, persona } of personnelDocs) {
     const admin = admins[persona.adminIdx];
-    const requestCount = persona.rejections + 2; // + Approved history + 1 Pending
-    const slots = Array.from({ length: requestCount }, (_, i) =>
-      Math.floor((i + 1) * (DAYS_BACK / (requestCount + 1))),
+    const historicalCount = persona.rejections + 1; // rejections + 1 Approved
+    const slots = Array.from({ length: historicalCount }, (_, i) =>
+      Math.floor((i + 1) * (DAYS_BACK / (historicalCount + 1))),
     );
 
     slots.forEach((daysBack, i) => {
-      const isPending = i === slots.length - 1;
-      const status = isPending ? "Pending" : i < persona.rejections ? "Rejected" : "Approved";
+      const status = i < persona.rejections ? "Rejected" : "Approved";
       const fromDate = daysAgo(daysBack);
       const toDate = daysAgo(Math.max(0, daysBack - randomInt(1, 3)));
       const submittedAt = daysAgo(daysBack + randomInt(2, 5));
@@ -207,10 +209,25 @@ async function run() {
         toDate,
         reason: pick(LEAVE_REASONS),
         status,
-        decidedBy: isPending ? undefined : admin._id,
-        decidedAt: isPending ? undefined : daysAgo(daysBack + 1),
+        decidedBy: admin._id,
+        decidedAt: daysAgo(daysBack + 1),
         submittedAt,
       });
+    });
+
+    // One fresh Pending request, dated a few days into the future - stays
+    // genuinely "Pending" and is available to test the approve/reject flow.
+    const pendingFrom = daysAhead(randomInt(5, 15));
+    const pendingTo = addDays(pendingFrom, randomInt(1, 4));
+    const pendingSubmittedAt = daysAgo(randomInt(0, 3));
+    leaveDocs.push({
+      id: leaveId(pendingSubmittedAt, sequenceToday++),
+      personnel: personnel._id,
+      fromDate: pendingFrom,
+      toDate: pendingTo,
+      reason: pick(LEAVE_REASONS),
+      status: "Pending",
+      submittedAt: pendingSubmittedAt,
     });
   }
   await LeaveRequest.collection.insertMany(leaveDocs);
