@@ -43,7 +43,7 @@ const allocateSupportRequest = asyncHandler(async (req, res) => {
   const personnelDocs = await getLinkedPersonnelDocs(req.admin._id);
   const personnelIds = personnelDocs.map((p) => String(p._id));
 
-  const request = await SupportRequest.findById(req.params.id);
+  const request = await SupportRequest.findOne({ id: req.params.id });
   if (!request || !personnelIds.includes(String(request.personnel))) {
     throw new ApiError(404, "Support request not found");
   }

@@ -41,7 +41,7 @@ const decideLeaveRequest = asyncHandler(async (req, res) => {
   const personnelDocs = await getLinkedPersonnelDocs(req.admin._id);
   const personnelIds = personnelDocs.map((p) => String(p._id));
 
-  const request = await LeaveRequest.findById(req.params.id);
+  const request = await LeaveRequest.findOne({ id: req.params.id });
   if (!request || !personnelIds.includes(String(request.personnel))) {
     throw new ApiError(404, "Leave request not found");
   }
