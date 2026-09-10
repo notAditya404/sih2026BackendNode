@@ -2,7 +2,7 @@ const HrIndicator = require("../models/HrIndicator");
 const StressPrediction = require("../models/StressPrediction");
 const { getOrComputeTodaySnapshot } = require("../services/wellnessEngine");
 const { getEffectiveScore } = require("../services/effectiveScore");
-const { toDisplayDate, startOfUTCDay, addDays } = require("../services/dateFormat");
+const { toDisplayDate, toDisplayTime, startOfUTCDay, addDays } = require("../services/dateFormat");
 const asyncHandler = require("../utils/asyncHandler");
 
 const getMe = asyncHandler(async (req, res) => {
@@ -82,7 +82,7 @@ const getWellness = asyncHandler(async (req, res) => {
     status: effective?.status ?? snapshot.status,
     riskLevel: effective?.riskLabel ?? snapshot.riskLabel,
     description: snapshot.description,
-    lastUpdated: `Today, ${new Date(snapshot.computedAt).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true })}`,
+    lastUpdated: `Today, ${toDisplayTime(snapshot.computedAt)}`,
     pillars: snapshot.pillars,
     influencingFactors: snapshot.influencingFactors,
     trend: await buildThirtyDayTrend(req.personnel._id, snapshot),

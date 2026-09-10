@@ -13,12 +13,44 @@ function toDisplayDate(date) {
   return `${d} ${m} ${y}`;
 }
 
+// Both apps' users are in India, so timestamps that represent a real
+// moment (submittedAt, lastUpdated, etc. - as opposed to a deliberately
+// UTC-midnight-anchored calendar date like a duty/leave date) need to
+// display in IST regardless of what timezone this server process itself
+// runs in (a hosting platform's default is often UTC, which previously
+// leaked straight into "12:00 am" style timestamps ~5.5 hours off from
+// what an Indian user actually did). Intl's IANA timezone database
+// handles the +5:30 offset correctly without any manual arithmetic.
+const DISPLAY_TIMEZONE = "Asia/Kolkata";
+
+function istParts(date) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: DISPLAY_TIMEZONE,
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const get = (type) => Number(parts.find((p) => p.type === type)?.value);
+  return { year: get("year"), month: get("month") - 1, day: get("day"), hour: get("hour"), minute: get("minute") };
+}
+
+function toDisplayTime(date) {
+  const { hour, minute } = istParts(date);
+  const ampm = hour >= 12 ? "pm" : "am";
+  const displayHour = hour % 12 || 12;
+  return `${displayHour}:${String(minute).padStart(2, "0")} ${ampm}`;
+}
+
 function toDisplayDateTime(date) {
-  let hours = date.getUTCHours();
-  const minutes = String(date.getUTCMinutes()).padStart(2, "0");
-  const ampm = hours >= 12 ? "pm" : "am";
-  hours = hours % 12 || 12;
-  return `${toDisplayDate(date)}, ${hours}:${minutes} ${ampm}`;
+  const { year, month, day, hour, minute } = istParts(date);
+  const d = String(day).padStart(2, "0");
+  const m = MONTHS[month];
+  const ampm = hour >= 12 ? "pm" : "am";
+  const displayHour = hour % 12 || 12;
+  return `${d} ${m} ${year}, ${displayHour}:${String(minute).padStart(2, "0")} ${ampm}`;
 }
 
 // First-3-letters lookup covers every real-world spelling we expect to see
@@ -75,6 +107,7 @@ function toRelativeTime(date) {
 module.exports = {
   toDisplayDate,
   toDisplayDateTime,
+  toDisplayTime,
   parseDisplayDate,
   startOfUTCDay,
   addDays,
