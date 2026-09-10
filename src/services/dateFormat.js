@@ -80,7 +80,24 @@ function parseDisplayDate(input) {
   return new Date(Date.UTC(Number(year), monthIndex, Number(day)));
 }
 
-function startOfUTCDay(date = new Date()) {
+// UTC midnight for a calendar day. When called with NO argument, "today"
+// is computed as of IST (Asia/Kolkata) - not this server process's raw UTC
+// clock - because "today" has to match what an Indian user means by it.
+// Between 12:00am and ~5:29am IST, the UTC calendar date is still
+// "yesterday" - getting this wrong here was the root cause behind
+// today's-snapshot, check-in-status, on-leave-today, and upcoming-duty ALL
+// silently computing against the wrong day during that window, across
+// every place in the backend that calls startOfUTCDay() with no argument.
+//
+// When an explicit `date` IS passed, it's assumed to already be a
+// calendar-date value (a duty/leave date, itself UTC-midnight-anchored by
+// parseDisplayDate) - this just normalizes it to UTC midnight, no timezone
+// conversion, since there's no "real moment" to convert from.
+function startOfUTCDay(date) {
+  if (!date) {
+    const { year, month, day } = istParts(new Date());
+    return new Date(Date.UTC(year, month, day));
+  }
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
 }
 
