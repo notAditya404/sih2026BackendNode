@@ -14,17 +14,33 @@ const ApiError = require("../utils/ApiError");
 // Expected response: the same shape predict_risk() returns:
 //   { ml_predicted_risk_score, ml_predicted_stress_level,
 //     deterministic_risk_score, deterministic_stress_level }
+const REQUEST_TIMEOUT_MS = 10000;
+
 async function predictRisk(record) {
   const modelUrl = process.env.ML_MODEL_URL;
   if (!modelUrl) {
     throw new ApiError(503, "ML model not connected yet - set ML_MODEL_URL once the model service is deployed");
   }
 
-  const response = await fetch(modelUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(record),
-  });
+  let response;
+  try {
+    response = await fetch(modelUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(record),
+      // mlPredictionRunner.js awaits this once per personnel in a
+      // sequential loop - without a timeout, a Flask service that's hung
+      // (not erroring, just stuck) rather than down would block that
+      // single call forever and silently stall the rest of that day's
+      // batch for every remaining personnel.
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+  } catch (error) {
+    if (error.name === "AbortError" || error.name === "TimeoutError") {
+      throw new ApiError(504, "ML model service timed out");
+    }
+    throw error;
+  }
 
   if (!response.ok) {
     throw new ApiError(502, `ML model service returned ${response.status}`);
