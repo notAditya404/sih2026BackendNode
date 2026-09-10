@@ -2,6 +2,7 @@ const StressPrediction = require("../models/StressPrediction");
 const HrIndicator = require("../models/HrIndicator");
 const SelfAssessment = require("../models/SelfAssessment");
 const { getOrComputeTodaySnapshot } = require("./wellnessEngine");
+const { getEffectiveScoresFor } = require("./effectiveScore");
 const { startOfUTCDay, addDays, toDisplayDate, toDisplayDateTime } = require("./dateFormat");
 
 /** Makes sure every linked personnel has a fresh snapshot for today before any admin view reads it. */
@@ -9,13 +10,15 @@ async function ensureTodaySnapshots(personnelIds) {
   await Promise.all(personnelIds.map((id) => getOrComputeTodaySnapshot(id)));
 }
 
+// Unit average - per personnel, the real ML model's result for that day
+// when recompute has stored one, else the heuristic snapshot (matches
+// buildPersonnelListView's per-personnel resolution, so the dashboard's
+// average and the personnel tab's individual scores never disagree).
 async function averageScoreForDay(personnelIds, day) {
-  const snapshots = await StressPrediction.find({
-    personnel: { $in: personnelIds },
-    snapshotDate: day,
-  });
-  if (!snapshots.length) return null;
-  return Math.round(snapshots.reduce((sum, s) => sum + s.wellnessScore, 0) / snapshots.length);
+  const scores = await getEffectiveScoresFor(personnelIds, day);
+  if (!scores.size) return null;
+  const values = [...scores.values()].map((s) => s.wellnessScore);
+  return Math.round(values.reduce((sum, v) => sum + v, 0) / values.length);
 }
 
 async function getWellnessSummary(personnelIds) {

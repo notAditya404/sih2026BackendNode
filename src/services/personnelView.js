@@ -1,6 +1,7 @@
 const LeaveRequest = require("../models/LeaveRequest");
 const StressPrediction = require("../models/StressPrediction");
 const { getOrComputeTodaySnapshot } = require("./wellnessEngine");
+const { getEffectiveScoresFor } = require("./effectiveScore");
 const { startOfUTCDay, toRelativeTime } = require("./dateFormat");
 
 /** Personnel IDs (as strings) with an Approved leave request covering today. */
@@ -30,21 +31,29 @@ async function buildPersonnelListView(personnelDocs) {
   const ids = personnelDocs.map((p) => p._id);
   const onLeaveIds = await getPersonnelIdsOnLeaveToday(ids);
 
+  // Heuristic snapshot is still needed for workload (its dutyBalance pillar
+  // has no real-ML equivalent) - risk/riskScore prefer the real ML model's
+  // result for today when POST /admin/ml-predictions/recompute has stored one.
   await Promise.all(personnelDocs.map((p) => getOrComputeTodaySnapshot(p._id)));
   const today = startOfUTCDay();
-  const snapshots = await StressPrediction.find({ personnel: { $in: ids }, snapshotDate: today });
+  const [snapshots, effectiveScores] = await Promise.all([
+    StressPrediction.find({ personnel: { $in: ids }, snapshotDate: today }),
+    getEffectiveScoresFor(ids, today),
+  ]);
   const snapshotByPersonnel = new Map(snapshots.map((s) => [String(s.personnel), s]));
 
   return personnelDocs.map((p) => {
-    const snapshot = snapshotByPersonnel.get(String(p._id));
+    const key = String(p._id);
+    const snapshot = snapshotByPersonnel.get(key);
+    const effective = effectiveScores.get(key);
     return {
-      id: String(p._id),
+      id: key,
       name: p.fullName,
       rank: p.rank,
-      risk: snapshot?.riskLabel ?? "Low",
-      riskScore: snapshot?.riskScore ?? 0,
+      risk: effective?.riskLabel ?? "Low",
+      riskScore: effective?.riskScore ?? 0,
       workload: snapshot ? workloadFromSnapshot(snapshot) : 0,
-      status: onLeaveIds.has(String(p._id)) ? "On Leave" : "Active",
+      status: onLeaveIds.has(key) ? "On Leave" : "Active",
       updated: snapshot ? toRelativeTime(snapshot.computedAt) : "Never",
     };
   });

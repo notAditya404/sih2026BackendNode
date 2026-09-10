@@ -63,6 +63,18 @@ function bucketLevel(score, high, moderate) {
   return "Low";
 }
 
+const WELLNESS_DESCRIPTIONS = {
+  Thriving: "You're maintaining an excellent balance of duty and recovery.",
+  Balanced: "You're maintaining a good balance of duty and recovery.",
+  "Needs Attention": "Your recent duty load and recovery pattern need some attention.",
+  "At Risk": "Your recent duty load and recovery pattern show signs of strain.",
+};
+
+/** Shared by computeSnapshot() and effectiveScore.js so a re-derived wellness label always gets the same description. */
+function describeWellness(wellnessLabel) {
+  return WELLNESS_DESCRIPTIONS[wellnessLabel];
+}
+
 /** Longest run of consecutive calendar days (ending today or earlier) that have at least one duty entry. */
 function currentDutyStreak(sortedDistinctDates) {
   if (!sortedDistinctDates.length) return 0;
@@ -308,19 +320,12 @@ async function computeSnapshot(personnelId, asOf = startOfUTCDay()) {
   const wellnessLabel = bucketWellness(wellnessScore);
   const trendDirection = await computeTrendDirection(personnelId, asOf, wellnessScore);
 
-  const descriptions = {
-    Thriving: "You're maintaining an excellent balance of duty and recovery.",
-    Balanced: "You're maintaining a good balance of duty and recovery.",
-    "Needs Attention": "Your recent duty load and recovery pattern need some attention.",
-    "At Risk": "Your recent duty load and recovery pattern show signs of strain.",
-  };
-
   return {
     wellnessScore,
     riskScore,
     riskLabel,
     status: wellnessLabel,
-    description: descriptions[wellnessLabel],
+    description: describeWellness(wellnessLabel),
     trendDirection,
     pillars,
     influencingFactors: computeInfluencingFactors(duty, checkin, personnel, asOf),
@@ -350,4 +355,5 @@ module.exports = {
   getOrComputeTodaySnapshot,
   bucketLevel,
   bucketWellness,
+  describeWellness,
 };

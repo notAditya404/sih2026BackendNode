@@ -1,6 +1,7 @@
 const HrIndicator = require("../models/HrIndicator");
 const StressPrediction = require("../models/StressPrediction");
 const { getOrComputeTodaySnapshot } = require("../services/wellnessEngine");
+const { getEffectiveScore } = require("../services/effectiveScore");
 const { toDisplayDate, startOfUTCDay, addDays } = require("../services/dateFormat");
 const asyncHandler = require("../utils/asyncHandler");
 
@@ -23,11 +24,21 @@ async function getLatestAssignedDuty(personnelId) {
 
 const getHomeDashboard = asyncHandler(async (req, res) => {
   const snapshot = await getOrComputeTodaySnapshot(req.personnel._id);
+  const effective = await getEffectiveScore(req.personnel._id);
   const assignedDuty = await getLatestAssignedDuty(req.personnel._id);
 
   res.json({
     personnel: { fullName: req.personnel.fullName },
-    wellnessStatus: { label: snapshot.status, description: snapshot.description, trend: snapshot.trendDirection },
+    // score/riskLevel reflect the real ML model once POST /admin/ml-predictions/recompute
+    // has run for today - description/trend still come from the heuristic
+    // engine, which doesn't have a real-ML equivalent yet.
+    wellnessStatus: {
+      score: effective?.wellnessScore ?? snapshot.wellnessScore,
+      label: effective?.status ?? snapshot.status,
+      riskLevel: effective?.riskLabel ?? snapshot.riskLabel,
+      description: snapshot.description,
+      trend: snapshot.trendDirection,
+    },
     atAGlance: snapshot.atAGlance,
     assignedDuty,
   });
@@ -61,10 +72,15 @@ async function buildThirtyDayTrend(personnelId, todaySnapshot) {
 
 const getWellness = asyncHandler(async (req, res) => {
   const snapshot = await getOrComputeTodaySnapshot(req.personnel._id);
+  const effective = await getEffectiveScore(req.personnel._id);
 
   res.json({
-    score: snapshot.wellnessScore,
-    status: snapshot.status,
+    // score/status/riskLevel reflect the real ML model once it's connected
+    // and recomputed for today - pillars/influencingFactors/trend stay on
+    // the heuristic engine, which has no real-ML equivalent for them yet.
+    score: effective?.wellnessScore ?? snapshot.wellnessScore,
+    status: effective?.status ?? snapshot.status,
+    riskLevel: effective?.riskLabel ?? snapshot.riskLabel,
     description: snapshot.description,
     lastUpdated: `Today, ${new Date(snapshot.computedAt).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true })}`,
     pillars: snapshot.pillars,
