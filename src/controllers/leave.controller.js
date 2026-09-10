@@ -1,6 +1,7 @@
 const LeaveRequest = require("../models/LeaveRequest");
 const { generateDailyId } = require("../services/idGenerator");
 const { toDisplayDate, toDisplayDateTime, parseDisplayDate } = require("../services/dateFormat");
+const { deriveLeaveStatus } = require("../services/leaveStatus");
 const ApiError = require("../utils/ApiError");
 const asyncHandler = require("../utils/asyncHandler");
 
@@ -10,7 +11,7 @@ function toResponseShape(request) {
     fromDate: toDisplayDate(request.fromDate),
     toDate: toDisplayDate(request.toDate),
     reason: request.reason,
-    status: request.status,
+    status: deriveLeaveStatus(request),
     submittedAt: toDisplayDateTime(request.submittedAt),
   };
 }

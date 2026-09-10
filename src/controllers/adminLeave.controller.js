@@ -2,6 +2,7 @@ const LeaveRequest = require("../models/LeaveRequest");
 const { getLinkedPersonnelDocs } = require("./adminPersonnel.controller");
 const { buildPersonnelListView } = require("../services/personnelView");
 const { toDisplayDate, toDisplayDateTime } = require("../services/dateFormat");
+const { deriveLeaveStatus } = require("../services/leaveStatus");
 const ApiError = require("../utils/ApiError");
 const asyncHandler = require("../utils/asyncHandler");
 
@@ -14,7 +15,7 @@ function toResponseShape(request, personnelView) {
     fromDate: toDisplayDate(request.fromDate),
     toDate: toDisplayDate(request.toDate),
     reason: request.reason,
-    status: request.status,
+    status: deriveLeaveStatus(request),
     submittedAt: toDisplayDateTime(request.submittedAt),
   };
 }
